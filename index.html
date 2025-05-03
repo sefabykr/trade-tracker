@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Takip</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Mevcut stiller aynı kalacak */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .delete-btn {
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 14px;
+            width: auto;
+        }
+        .delete-btn:hover {
+            background-color: #cc0000;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .action-cell {
+            text-align: center;
+            width: 100px;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f5e9;
+            border-radius: 4px;
+        }
+        .profit {
+            color: green;
+        }
+        .loss {
+            color: red;
+        }
+        .chart-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+            height: 400px;
+        }
+        /* Yeni stiller */
+        #loginContainer {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        #mainContainer {
+            display: none;
+        }
+        .logout-btn {
+            background-color: #f44336;
+            margin-top: 10px;
+        }
+        .user-info {
+            text-align: right;
+            margin-bottom: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Container -->
+    <div id="loginContainer">
+        <h2>Trade Takip - Giriş</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Kullanıcı Adı:</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Şifre:</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit">Giriş Yap</button>
+            <button type="button" id="registerBtn" style="margin-top: 10px; background-color: #2196F3;">Kayıt Ol</button>
+        </form>
+    </div>
+
+    <!-- Main Container -->
+    <div id="mainContainer" class="container">
+        <div class="user-info">
+            Hoş geldin, <span id="userDisplay"></span>
+            <button class="logout-btn" onclick="logout()">Çıkış Yap</button>
+        </div>
+
+        <h1>Trade Takip</h1>
+        
+        <form id="tradeForm">
+            <div class="form-group">
+                <label for="date">Tarih:</label>
+                <input type="date" id="date" required>
+            </div>
+            <div class="form-group">
+                <label for="profit">Kar/Zarar ($):</label>
+                <input type="number" id="profit" step="0.01" required placeholder="Kar için pozitif, zarar için negatif değer girin">
+            </div>
+            <button type="submit">İşlem Ekle</button>
+        </form>
+
+        <div class="chart-container">
+            <canvas id="profitChart"></canvas>
+        </div>
+
+        <div class="summary">
+            <h3>Özet</h3>
+            <p>Günlük Kar/Zarar: <span id="dailyProfit">0.00</span> $</p>
+            <p>Haftalık Kar/Zarar: <span id="weeklyProfit">0.00</span> $</p>
+            <p>Aylık Kar/Zarar: <span id="monthlyProfit">0.00</span> $</p>
+        </div>
+
+        <h3>İşlem Geçmişi</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tarih</th>
+                    <th>Kar/Zarar ($)</th>
+                    <th>İşlem</th>
+                </tr>
+            </thead>
+            <tbody id="tradeHistory">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Kullanıcı yönetimi için değişkenler
+        let currentUser = null;
+        let users = JSON.parse(localStorage.getItem('users')) || {};
+        
+        // Login form işlemleri
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (users[username] && users[username].password === password) {
+                login(username);
+            } else {
+                alert('Kullanıcı adı veya şifre hatalı!');
+            }
+        });
+
+        // Kayıt ol butonu işlemleri
+        document.getElementById('registerBtn').addEventListener('click', function() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                alert('Kullanıcı adı ve şifre gerekli!');
+                return;
+            }
+
+            if (users[username]) {
+                alert('Bu kullanıcı adı zaten kullanılıyor!');
+                return;
+            }
+
+            users[username] = {
+                password: password,
+                trades: []
+            };
+            localStorage.setItem('users', JSON.stringify(users));
+            login(username);
+        });
+
+        function login(username) {
+            currentUser = username;
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('mainContainer').style.display = 'block';
+            document.getElementById('userDisplay').textContent = username;
+            trades = users[username].trades;
+            updateDisplay();
+        }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('loginContainer').style.display = 'block';
+            document.getElementById('mainContainer').style.display = 'none';
+            document.getElementById('loginForm').reset();
+        }
+
+        // Mevcut trade işlemleri için değişkenler
+        let trades = [];
+        let chart;
+
+        function deleteTransaction(index) {
+            const trade = trades[index];
+            const date = new Date(trade.date).toLocaleDateString();
+            const amount = Math.abs(trade.profit).toFixed(2);
+            const type = trade.profit >= 0 ? 'kar' : 'zarar';
+            
+            const confirmMessage = `${date} tarihli ${amount} $ ${type} işlemini silmek istediğinize emin misiniz?`;
+            
+            if (confirm(confirmMessage)) {
+                trades.splice(index, 1);
+                users[currentUser].trades = trades;
+                localStorage.setItem('users', JSON.stringify(users));
+                updateDisplay();
+            }
+        }
+
+        // Chart.js kodları aynı kalacak
+        function createChart(data) {
+            const ctx = document.getElementById('profitChart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.dates,
+                    datasets: [{
+                        label: 'Kar/Zarar ($)',
+                        data: data.profits,
+                        backgroundColor: data.profits.map(profit => 
+                            profit >= 0 ? 'rgba(75, 192, 75, 0.8)' : 'rgba(255, 99, 132, 0.8)'
+                        ),
+                        borderColor: data.profits.map(profit => 
+                            profit >= 0 ? 'rgba(75, 192, 75, 1)' : 'rgba(255, 99, 132, 1)'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Günlük Kar/Zarar Grafiği',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Kar/Zarar ($)',
+                                font: {
+                                    size: 14
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Tarih',
+                                font: {
+                                    size: 14
+                                }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    hover: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    animation: {
+                        duration: 1000
+                    }
+                }
+            });
+        }
+
+        document.getElementById('tradeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const trade = {
+                date: document.getElementById('date').value,
+                profit: parseFloat(document.getElementById('profit').value)
+            };
+
+            trades.push(trade);
+            users[currentUser].trades = trades;
+            localStorage.setItem('users', JSON.stringify(users));
+            updateDisplay();
+            this.reset();
+        });
+
+        function updateDisplay() {
+            const tbody = document.getElementById('tradeHistory');
+            tbody.innerHTML = '';
+            
+            trades.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const chartData = {
+                dates: trades.map(trade => new Date(trade.date).toLocaleDateString()),
+                profits: trades.map(trade => trade.profit)
+            };
+            
+            createChart(chartData);
+
+            trades.sort((a, b) => new Date(b.date) - new Date(a.date));
+            trades.forEach((trade, index) => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${new Date(trade.date).toLocaleDateString()}</td>
+                    <td class="${trade.profit >= 0 ? 'profit' : 'loss'}">${trade.profit.toFixed(2)}</td>
+                    <td class="action-cell">
+                        <button class="delete-btn" onclick="deleteTransaction(${index})">Sil</button>
+                    </td>
+                `;
+            });
+
+            updateProfitSummary();
+        }
+
+        function updateProfitSummary() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+
+            const dailyProfit = trades
+                .filter(trade => new Date(trade.date) >= today)
+                .reduce((sum, trade) => sum + trade.profit, 0);
+
+            const weeklyProfit = trades
+                .filter(trade => new Date(trade.date) >= weekAgo)
+                .reduce((sum, trade) => sum + trade.profit, 0);
+
+            const monthlyProfit = trades
+                .filter(trade => new Date(trade.date) >= monthAgo)
+                .reduce((sum, trade) => sum + trade.profit, 0);
+
+            document.getElementById('dailyProfit').textContent = dailyProfit.toFixed(2);
+            document.getElementById('dailyProfit').className = dailyProfit >= 0 ? 'profit' : 'loss';
+            
+            document.getElementById('weeklyProfit').textContent = weeklyProfit.toFixed(2);
+            document.getElementById('weeklyProfit').className = weeklyProfit >= 0 ? 'profit' : 'loss';
+            
+            document.getElementById('monthlyProfit').textContent = monthlyProfit.toFixed(2);
+            document.getElementById('monthlyProfit').className = monthlyProfit >= 0 ? 'profit' : 'loss';
+        }
+    </script>
+</body>
+</html><!-- Tarih input alanını güncelleyelim -->
+<div class="form-group">
+    <label for="date">Tarih:</label>
+    <input type="date" id="date" required>
+</div>
+
+<!-- Script kısmına eklenecek kod -->
+<script>
+    // Mevcut kodun içine, form gösterilmeden önce tarih alanını dolduracak fonksiyon
+    function setTodayDate() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${day}`;
+        document.getElementById('date').value = formattedDate;
+    }
+
+    // Login fonksiyonunun içine ekleyin
+    function login(username) {
+        currentUser = username;
+        document.getElementById('loginContainer').style.display = 'none';
+        document.getElementById('mainContainer').style.display = 'block';
+        document.getElementById('userDisplay').textContent = username;
+        trades = users[username].trades;
+        setTodayDate(); // Giriş yapıldığında tarihi ayarla
+        updateDisplay();
+    }
+
+    // Form reset edildiğinde tarihi tekrar ayarla
+    document.getElementById('tradeForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const trade = {
+            date: document.getElementById('date').value,
+            profit: parseFloat(document.getElementById('profit').value)
+        };
+
+        trades.push(trade);
+        users[currentUser].trades = trades;
+        localStorage.setItem('users', JSON.stringify(users));
+        updateDisplay();
+        this.reset();
+        setTodayDate(); // Form resetlendiğinde tarihi tekrar ayarla
+    });
+
+    // Sayfa yüklendiğinde tarihi ayarla
+    document.addEventListener('DOMContentLoaded', function() {
+        setTodayDate();
+    });
+</script>
